@@ -596,6 +596,34 @@ pub fn img_resize_crop(
     Ok(resized_img)
 }
 
+pub fn print_ink(ink: &cli::Ink) -> Result<(), String> {
+    let imgbuf = ImgBuf::new(&ink.image)?;
+    let DecodeBuffer::RasterImage(raster) = imgbuf.decode_prepare() else {
+        return Err("ink only supports raster images".to_string());
+    };
+    let img = raster.decode(PixelFormat::Bgr)?;
+    let pixels = img_resize_crop(
+        &img,
+        (ink.width, ink.height),
+        make_filter(cli::Filter::Bilinear),
+        None,
+    )?;
+    let rows = ink.band.min(ink.height) as usize;
+    let lin = |c: u8| {
+        let c = c as f64 / 255.0;
+        if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
+    };
+    let band = &pixels[..rows * ink.width as usize * 3];
+    let mut sum = 0f64;
+    for px in band.chunks_exact(3) {
+        sum += 0.2126 * lin(px[0]) + 0.7152 * lin(px[1]) + 0.0722 * lin(px[2]);
+    }
+    let y = sum / (band.len() / 3) as f64;
+    let black = (y + 0.05) / 0.05 >= 1.05 / (y + 0.05);
+    println!("{} {y:.4}", if black { "black" } else { "white" });
+    Ok(())
+}
+
 pub fn make_transition(img: &cli::Img) -> ipc::Transition {
     let mut angle = img.transition_angle;
     let mut wave = img.transition_wave;

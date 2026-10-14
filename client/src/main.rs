@@ -15,7 +15,12 @@ fn main() -> Result<(), String> {
     common::log::init(common::log::Filter::Trace);
     let awww = Awww::parse();
 
+    if let Awww::Ink(ink) = &awww {
+        return imgproc::print_ink(ink);
+    }
+
     let all = match &awww {
+        Awww::Ink(_) => unreachable!("ink returns before reaching the daemon"),
         Awww::Clear(clear) => clear.all,
         Awww::Restore(restore) => restore.all,
         Awww::ClearCache => {
@@ -33,6 +38,7 @@ fn main() -> Result<(), String> {
         IpcSocket::all_namespaces().map_err(|e| e.to_string())?
     } else {
         match &awww {
+            Awww::Ink(_) => unreachable!("ink returns before reaching the daemon"),
             Awww::Clear(clear) => clear.namespace.clone(),
             Awww::Restore(restore) => restore.namespace.clone(),
             Awww::ClearCache => {
@@ -194,6 +200,7 @@ fn make_request(args: &Awww, namespace: &str) -> Result<Option<RequestSend>, Str
         Awww::Unpause(_) => Ok(Some(RequestSend::Unpause)),
         Awww::Kill(_) => Ok(Some(RequestSend::Kill)),
         Awww::Query(_) => Ok(Some(RequestSend::Query)),
+        Awww::Ink(_) => unreachable!("ink returns before reaching the daemon"),
     }
 }
 

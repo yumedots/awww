@@ -197,6 +197,29 @@ pub enum Awww {
     ///You may use this to find out valid values for the <awww-img --outputs> option. If you want
     ///more detailed information about your outputs, I would recommend trying wlr-randr.
     Query(Query),
+
+    ///Prints `black` or `white` (the ink that reads best) over the top band of an image, as it
+    ///would be framed on an output of the given size, plus the band's mean relative luminance.
+    ///Runs locally, no daemon needed.
+    Ink(Ink),
+}
+
+#[derive(Parser)]
+pub struct Ink {
+    /// The image to measure
+    pub image: std::path::PathBuf,
+
+    /// Output width in pixels
+    #[arg(long)]
+    pub width: u32,
+
+    /// Output height in pixels
+    #[arg(long)]
+    pub height: u32,
+
+    /// Height in pixels of the top band to measure (e.g. the bar)
+    #[arg(long)]
+    pub band: u32,
 }
 
 #[derive(Parser)]
