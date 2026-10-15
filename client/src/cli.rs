@@ -558,7 +558,7 @@ pub struct Img {
     #[arg(short, long, default_value = "Lanczos3")]
     pub filter: Filter,
 
-    ///Rows at the top of the output to measure so the daemon can report black or white ink.
+    ///Rows at the top of the output the daemon samples so it can pick the bar color. 0 skips it.
     ///0 skips it.
     #[arg(long, default_value_t = 0)]
     pub ink_band: u32,

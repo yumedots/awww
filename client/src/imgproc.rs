@@ -637,16 +637,6 @@ fn is_black(y: f64) -> bool {
     (y + 0.05) / 0.05 >= 1.05 / (y + 0.05)
 }
 
-pub fn ink_code(frame: &[u8], dim: (u32, u32), format: PixelFormat, band: u32) -> u8 {
-    if band == 0 {
-        0
-    } else if is_black(band_luma(frame, dim, format, band)) {
-        1
-    } else {
-        2
-    }
-}
-
 pub fn make_transition(img: &cli::Img) -> ipc::Transition {
     let mut angle = img.transition_angle;
     let mut wave = img.transition_wave;

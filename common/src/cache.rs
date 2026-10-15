@@ -31,6 +31,7 @@ pub struct CacheEntry<'a> {
     pub crop_gravity: Option<&'a str>,
     pub filter: &'a str,
     pub img_path: &'a str,
+    pub band: u8,
 }
 
 impl<'a> CacheEntry<'a> {
@@ -40,6 +41,7 @@ impl<'a> CacheEntry<'a> {
         crop_gravity: Option<&'a str>,
         filter: &'a str,
         img_path: &'a str,
+        band: u8,
     ) -> Self {
         Self {
             namespace,
@@ -47,6 +49,7 @@ impl<'a> CacheEntry<'a> {
             crop_gravity,
             filter,
             img_path,
+            band,
         }
     }
 
@@ -72,10 +75,17 @@ impl<'a> CacheEntry<'a> {
             let filter = str::from_utf8(filter).map_err(|_| err.clone())?;
             let img_path = str::from_utf8(img_path).map_err(|_| err)?;
 
-            let (resize, crop_gravity) = resize
-                .split_once(":")
-                .map(|(a, b)| (a, Some(b)))
-                .unwrap_or((resize, None));
+            // the resize field carries optional extras: resize[:gravity][:band]
+            let mut parts = resize.splitn(3, ':');
+            let resize = parts.next().unwrap_or(resize);
+            let (crop_gravity, band) = match (parts.next(), parts.next()) {
+                (Some(gravity), Some(band)) => (
+                    if gravity.is_empty() { None } else { Some(gravity) },
+                    band.parse().unwrap_or(0),
+                ),
+                (Some(gravity), None) => (Some(gravity), 0),
+                (None, _) => (None, 0),
+            };
 
             v.push(CacheEntry {
                 namespace,
@@ -83,6 +93,7 @@ impl<'a> CacheEntry<'a> {
                 crop_gravity,
                 filter,
                 img_path,
+                band,
             });
         }
 
@@ -110,6 +121,10 @@ impl<'a> CacheEntry<'a> {
             entry.crop_gravity = self.crop_gravity;
             entry.filter = self.filter;
             entry.img_path = self.img_path;
+            // a band-less request must not clobber a stored band, or ink dies after reboot
+            if self.band > 0 {
+                entry.band = self.band;
+            }
         } else {
             entries.push(self);
         }
@@ -123,15 +138,25 @@ impl<'a> CacheEntry<'a> {
                 crop_gravity,
                 filter,
                 img_path,
+                band,
             } = entry;
             let crop_gravity_option = match crop_gravity {
                 Some(value) => format!(":{value}"),
                 None => "".to_string(),
             };
+            let band_option = if band > 0 {
+                if crop_gravity.is_some() {
+                    format!(":{band}")
+                } else {
+                    format!("::{band}")
+                }
+            } else {
+                "".to_string()
+            };
             let entry_delimiter = if len == 0 { "" } else { "\0" };
             len += write_all(
                 &file,
-                format!("{entry_delimiter}{namespace}\0{resize}{crop_gravity_option}\0{filter}\0{img_path}").as_bytes(),
+                format!("{entry_delimiter}{namespace}\0{resize}{crop_gravity_option}{band_option}\0{filter}\0{img_path}").as_bytes(),
             )?;
         }
 

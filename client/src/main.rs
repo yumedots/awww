@@ -237,7 +237,7 @@ fn make_img_request(
                     .into_boxed_slice();
                 img_req_builder.push(
                     ipc::ImgSend {
-                        ink: ink_code(&frame, dim, ipc::PixelFormat::Rgb, ink_band),
+                        band: ink_band.min(u8::MAX as u32) as u8,
                         img: frame,
                         path: color_path.clone(),
                         dim,
@@ -330,7 +330,7 @@ fn make_img_request(
 
                         img_req_builder.push(
                             ipc::ImgSend {
-                                ink: ink_code(&img, dim, pixel_format, ink_band),
+                                band: ink_band.min(u8::MAX as u32) as u8,
                                 img,
                                 path: path.clone(),
                                 dim,
@@ -385,7 +385,7 @@ fn make_img_request(
                         };
                         img_req_builder.push(
                             ipc::ImgSend {
-                                ink: ink_code(&img, dim, pixel_format, ink_band),
+                                band: ink_band.min(u8::MAX as u32) as u8,
                                 img,
                                 path: path.clone(),
                                 dim,

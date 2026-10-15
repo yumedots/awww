@@ -85,14 +85,14 @@ impl ImageRequestBuilder {
             img,
             dim: dims,
             format,
-            ink,
+            band,
         } = &img;
         self.serialize_bytes(path.as_bytes());
         self.serialize_bytes(img);
         self.extend(&dims.0.to_ne_bytes());
         self.extend(&dims.1.to_ne_bytes());
         self.push_byte(*format as u8);
-        self.push_byte(*ink);
+        self.push_byte(*band);
 
         self.push_byte(outputs.len() as u8);
         for output in outputs {
@@ -110,9 +110,15 @@ impl ImageRequestBuilder {
         if use_cache {
             // cache the request
             for output in outputs {
-                if let Err(e) =
-                    super::cache::CacheEntry::new(namespace, resize, crop_gravity, filter, path)
-                        .store(output)
+                if let Err(e) = super::cache::CacheEntry::new(
+                    namespace,
+                    resize,
+                    crop_gravity,
+                    filter,
+                    path,
+                    *band,
+                )
+                .store(output)
                 {
                     log::error!("failed to store cache: {e}");
                 }
@@ -174,6 +180,7 @@ impl ImageRequestBuilder {
                         prev_image_cache.crop_gravity,
                         prev_image_cache.filter,
                         &img_path,
+                        prev_image_cache.band,
                     )
                     .store(&output)
                 {
