@@ -500,6 +500,25 @@ impl Wallpaper {
         self.last_mean = Some(mean);
         self.ink = crate::ink::ink_code(y);
         self.color = crate::ink::tint(mean, y);
+        self.publish_ink();
+    }
+
+    /// writes the ink of the frame on screen to $XDG_RUNTIME_DIR/awww-ink-<output>, so a bar can
+    /// flip in the same frame as the wallpaper instead of polling for it
+    fn publish_ink(&self) {
+        let (Some(name), Some(dir)) = (self.name.as_deref(), std::env::var_os("XDG_RUNTIME_DIR")) else {
+            return;
+        };
+        let ink = match self.ink {
+            1 => "black",
+            2 => "white",
+            _ => return,
+        };
+        let path = std::path::Path::new(&dir).join(format!("awww-ink-{name}"));
+
+        if let Err(e) = std::fs::write(&path, ink) {
+            warn!("failed to publish ink to {}: {}", path.display(), e);
+        }
     }
 
     pub fn set_img_info(&mut self, img_info: BgImg) {
