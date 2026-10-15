@@ -34,12 +34,20 @@ impl Animator {
         img_req: ImgReq,
         animation: Option<ipc::Animation>,
     ) -> Option<Self> {
-        let ImgReq { img, path, dim, .. } = img_req;
+        let ImgReq {
+            img,
+            path,
+            dim,
+            ink,
+            ..
+        } = img_req;
         if wallpapers.is_empty() {
             return None;
         }
         for w in &mut wallpapers {
-            w.borrow_mut().set_img_info(BgImg::Img(path.str().into()));
+            let mut w = w.borrow_mut();
+            w.set_img_info(BgImg::Img(path.str().into()));
+            w.set_ink(ink);
         }
 
         let expect = wallpapers[0].borrow().get_dimensions();

@@ -85,12 +85,14 @@ impl ImageRequestBuilder {
             img,
             dim: dims,
             format,
+            ink,
         } = &img;
         self.serialize_bytes(path.as_bytes());
         self.serialize_bytes(img);
         self.extend(&dims.0.to_ne_bytes());
         self.extend(&dims.1.to_ne_bytes());
         self.push_byte(*format as u8);
+        self.push_byte(*ink);
 
         self.push_byte(outputs.len() as u8);
         for output in outputs {

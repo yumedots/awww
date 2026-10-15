@@ -558,6 +558,11 @@ pub struct Img {
     #[arg(short, long, default_value = "Lanczos3")]
     pub filter: Filter,
 
+    ///Rows at the top of the output to measure so the daemon can report black or white ink.
+    ///0 skips it.
+    #[arg(long, default_value_t = 0)]
+    pub ink_band: u32,
+
     ///Sets the type of transition. Default is 'simple', that fades into the new image
     ///
     ///Possible transitions are:

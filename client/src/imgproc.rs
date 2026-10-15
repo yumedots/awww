@@ -608,20 +608,43 @@ pub fn print_ink(ink: &cli::Ink) -> Result<(), String> {
         make_filter(cli::Filter::Bilinear),
         None,
     )?;
-    let rows = ink.band.min(ink.height) as usize;
+    let y = band_luma(&pixels, (ink.width, ink.height), PixelFormat::Bgr, ink.band);
+    println!("{} {y:.4}", if is_black(y) { "black" } else { "white" });
+    Ok(())
+}
+
+fn band_luma(frame: &[u8], dim: (u32, u32), format: PixelFormat, band: u32) -> f64 {
+    let (w, h) = (dim.0 as usize, dim.1 as usize);
+    let rows = (band as usize).min(h);
+    if w == 0 || rows == 0 {
+        return 0.0;
+    }
+    let stride = frame.len() / (w * h);
+    let swap = matches!(format, PixelFormat::Rgb | PixelFormat::Argb);
     let lin = |c: u8| {
         let c = c as f64 / 255.0;
         if c <= 0.04045 { c / 12.92 } else { ((c + 0.055) / 1.055).powf(2.4) }
     };
-    let band = &pixels[..rows * ink.width as usize * 3];
     let mut sum = 0f64;
-    for px in band.chunks_exact(3) {
-        sum += 0.2126 * lin(px[0]) + 0.7152 * lin(px[1]) + 0.0722 * lin(px[2]);
+    for px in frame[..rows * w * stride].chunks_exact(stride) {
+        let (r, b) = if swap { (px[0], px[2]) } else { (px[2], px[0]) };
+        sum += 0.2126 * lin(r) + 0.7152 * lin(px[1]) + 0.0722 * lin(b);
     }
-    let y = sum / (band.len() / 3) as f64;
-    let black = (y + 0.05) / 0.05 >= 1.05 / (y + 0.05);
-    println!("{} {y:.4}", if black { "black" } else { "white" });
-    Ok(())
+    sum / (rows * w) as f64
+}
+
+fn is_black(y: f64) -> bool {
+    (y + 0.05) / 0.05 >= 1.05 / (y + 0.05)
+}
+
+pub fn ink_code(frame: &[u8], dim: (u32, u32), format: PixelFormat, band: u32) -> u8 {
+    if band == 0 {
+        0
+    } else if is_black(band_luma(frame, dim, format, band)) {
+        1
+    } else {
+        2
+    }
 }
 
 pub fn make_transition(img: &cli::Img) -> ipc::Transition {

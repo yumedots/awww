@@ -163,6 +163,7 @@ impl Daemon {
                 for wallpaper in &wallpapers {
                     let mut wallpaper = wallpaper.borrow_mut();
                     wallpaper.set_img_info(common::ipc::BgImg::Color(clear.color));
+                    wallpaper.set_ink(0);
                     wallpaper.clear(
                         &mut self.backend,
                         &mut self.objman,

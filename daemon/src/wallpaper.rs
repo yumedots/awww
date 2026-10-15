@@ -73,6 +73,7 @@ pub struct Wallpaper {
 
     frame_callback_handler: FrameCallbackHandler,
     img: BgImg,
+    ink: u8,
     pool: BumpPool,
 }
 
@@ -181,6 +182,7 @@ impl Wallpaper {
             is_borrowed: false,
             frame_callback_handler,
             img: BgImg::Color([0, 0, 0, 0]),
+            ink: 0,
             pool,
         }
     }
@@ -201,6 +203,7 @@ impl Wallpaper {
                 BgImg::Img(img) => BgImg::Img(img.clone()),
             },
             pixel_format,
+            ink: self.ink,
         }
     }
 
@@ -437,6 +440,10 @@ impl Wallpaper {
                 pixel[0..channels].copy_from_slice(&color[0..channels]);
             }
         });
+    }
+
+    pub fn set_ink(&mut self, ink: u8) {
+        self.ink = ink;
     }
 
     pub fn set_img_info(&mut self, img_info: BgImg) {

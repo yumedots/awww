@@ -218,6 +218,7 @@ fn make_img_request(
 
     let use_cache = !img.no_cache;
     let filter = img.filter.as_str();
+    let ink_band = img.ink_band;
     let resize = img.resize.as_str();
     let crop_gravity_str = img.crop_gravity.map(|v| v.as_str());
 
@@ -230,14 +231,14 @@ fn make_img_request(
                 color[0], color[1], color[2], color[3]
             );
 
-            cache_path = color_path.clone();
-
-            for (&dim, outputs) in dims.iter().zip(outputs) {
+            cache_path = color_path.clone();                for (&dim, outputs) in dims.iter().zip(outputs) {
+                let frame = image::RgbaImage::from_pixel(dim.0, dim.1, image::Rgba(*color))
+                    .to_vec()
+                    .into_boxed_slice();
                 img_req_builder.push(
                     ipc::ImgSend {
-                        img: image::RgbaImage::from_pixel(dim.0, dim.1, image::Rgba(*color))
-                            .to_vec()
-                            .into_boxed_slice(),
+                        ink: ink_code(&frame, dim, ipc::PixelFormat::Rgb, ink_band),
+                        img: frame,
                         path: color_path.clone(),
                         dim,
                         format: pixel_format,
@@ -329,6 +330,7 @@ fn make_img_request(
 
                         img_req_builder.push(
                             ipc::ImgSend {
+                                ink: ink_code(&img, dim, pixel_format, ink_band),
                                 img,
                                 path: path.clone(),
                                 dim,
@@ -383,6 +385,7 @@ fn make_img_request(
                         };
                         img_req_builder.push(
                             ipc::ImgSend {
+                                ink: ink_code(&img, dim, pixel_format, ink_band),
                                 img,
                                 path: path.clone(),
                                 dim,
@@ -505,6 +508,7 @@ fn restore_output(output: &str, namespace: &str) -> Result<(), String> {
             crop_gravity,
             fill_color: [0, 0, 0, 255],
             filter: Filter::from_str(cache.filter).unwrap_or(Filter::Lanczos3),
+            ink_band: 0,
             transition_type: cli::TransitionType::None,
             transition_step: std::num::NonZeroU8::MAX,
             transition_duration: 0.0,

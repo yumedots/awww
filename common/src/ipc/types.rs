@@ -228,6 +228,7 @@ pub struct BgInfo {
     pub scale_factor: Scale,
     pub img: BgImg,
     pub pixel_format: PixelFormat,
+    pub ink: u8,
 }
 
 impl BgInfo {
@@ -246,7 +247,7 @@ impl BgInfo {
             + 8 //dim
             + 5 //scale_factor (discriminant + value)
             + self.img.serialized_size()
-            + 1 //pixel_format
+            + 2 //pixel_format and ink
     }
 
     pub(super) fn serialize(&self, buf: &mut [u8]) -> usize {
@@ -256,6 +257,7 @@ impl BgInfo {
             scale_factor,
             img,
             pixel_format,
+            ink,
         } = self;
 
         let len = name.len();
@@ -299,7 +301,8 @@ impl BgInfo {
         }
 
         buf[i] = *pixel_format as u8;
-        i + 1
+        buf[i + 1] = *ink;
+        i + 2
     }
 
     pub(super) fn deserialize(bytes: &[u8]) -> (Self, usize) {
@@ -352,6 +355,8 @@ impl BgInfo {
             _ => PixelFormat::Argb,
         };
         i += 1;
+        let ink = bytes[i];
+        i += 1;
 
         (
             Self {
@@ -360,6 +365,7 @@ impl BgInfo {
                 scale_factor,
                 img,
                 pixel_format,
+                ink,
             },
             i,
         )
@@ -370,8 +376,17 @@ impl fmt::Display for BgInfo {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(
             f,
-            "{}: {}x{}, scale: {}, currently displaying: {}",
-            self.name, self.dim.0, self.dim.1, self.scale_factor, self.img
+            "{}: {}x{}, scale: {}, currently displaying: {}, ink: {}",
+            self.name,
+            self.dim.0,
+            self.dim.1,
+            self.scale_factor,
+            self.img,
+            match self.ink {
+                1 => "black",
+                2 => "white",
+                _ => "unknown",
+            }
         )
     }
 }
@@ -543,6 +558,7 @@ pub struct ImgSend {
     pub path: String,
     pub dim: (u32, u32),
     pub format: PixelFormat,
+    pub ink: u8,
     pub img: Box<[u8]>,
 }
 
@@ -550,6 +566,7 @@ pub struct ImgReq {
     pub path: MmappedStr,
     pub dim: (u32, u32),
     pub format: PixelFormat,
+    pub ink: u8,
     pub img: MmappedBytes,
 }
 
@@ -575,12 +592,15 @@ impl ImgReq {
             _ => PixelFormat::Argb,
         };
         i += 1;
+        let ink = bytes[i];
+        i += 1;
 
         (
             Self {
                 path,
                 dim,
                 format,
+                ink,
                 img,
             },
             i,
