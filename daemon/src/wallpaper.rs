@@ -73,7 +73,10 @@ pub struct Wallpaper {
 
     frame_callback_handler: FrameCallbackHandler,
     img: BgImg,
+    band: u8,
     ink: u8,
+    color: [u8; 4],
+    last_mean: Option<[u8; 3]>,
     pool: BumpPool,
 }
 
@@ -182,9 +185,18 @@ impl Wallpaper {
             is_borrowed: false,
             frame_callback_handler,
             img: BgImg::Color([0, 0, 0, 0]),
+            band: 0,
             ink: 0,
+            color: [0, 0, 0, 0],
+            last_mean: None,
             pool,
         }
+    }
+
+    /// info for `query`, with a fresh sample of whatever is on screen right now
+    pub fn info(&mut self, pixel_format: PixelFormat) -> BgInfo {
+        self.sample_ink(pixel_format);
+        self.get_bg_info(pixel_format)
     }
 
     pub fn get_bg_info(&self, pixel_format: PixelFormat) -> BgInfo {
@@ -204,6 +216,7 @@ impl Wallpaper {
             },
             pixel_format,
             ink: self.ink,
+            color: self.color,
         }
     }
 
@@ -302,12 +315,18 @@ impl Wallpaper {
                             Some(v) => format!("--crop-gravity={v}"),
                             None => "".to_string(),
                         };
+                        let band_parameters = if cache.band > 0 {
+                            format!("--ink-band={}", cache.band)
+                        } else {
+                            "".to_string()
+                        };
 
                         let cmd = format!(
                             "exec awww img \
                             --outputs='{output_name}' \
                             --resize={} \
                             {crop_gravity_parameters} \
+                            {band_parameters} \
                             --filter={} \
                             --namespace='{namespace}' \
                             --transition-type=none \
@@ -420,7 +439,9 @@ impl Wallpaper {
     where
         F: FnOnce(&mut [u8]) -> T,
     {
-        f(self.pool.get_drawable(backend, objman, pixel_format))
+        let t = f(self.pool.get_drawable(backend, objman, pixel_format));
+        self.sample_ink(pixel_format);
+        t
     }
 
     pub fn frame_callback_completed(&mut self) {
@@ -442,8 +463,43 @@ impl Wallpaper {
         });
     }
 
-    pub fn set_ink(&mut self, ink: u8) {
-        self.ink = ink;
+    pub fn set_band(&mut self, band: u8) {
+        // the band belongs to the output (bar height), not to one image request: a request
+        // without --ink-band keeps the last known band instead of disabling ink forever
+        if band > 0 {
+            self.band = band;
+        }
+        self.last_mean = None;
+    }
+
+    /// re-measures the top band of the frame that was just drawn, so the reported bar color
+    /// always follows what is actually on screen (transitions, animation frames, solid colors)
+    fn sample_ink(&mut self, pixel_format: PixelFormat) {
+        let rows = match &self.img {
+            // a solid color fills the whole canvas, one row already tells the whole story
+            BgImg::Color(_) => self.band.max(1),
+            BgImg::Img(_) => self.band,
+        } as usize;
+        if rows == 0 {
+            return;
+        }
+
+        let width = self.pool.width() as usize;
+        let Some(canvas) = self.pool.last_drawn(pixel_format) else {
+            return;
+        };
+        let Some((mean, y)) = crate::ink::sample(canvas, width, pixel_format, rows) else {
+            return;
+        };
+
+        // ponytail: a flat 8/255 per channel debounce keeps animation noise from flickering the
+        // bar; upgrade path is an exponential moving average if that is ever too jumpy
+        if self.last_mean.is_some_and(|last| crate::ink::unchanged(last, mean)) {
+            return;
+        }
+        self.last_mean = Some(mean);
+        self.ink = crate::ink::ink_code(y);
+        self.color = crate::ink::tint(mean, y);
     }
 
     pub fn set_img_info(&mut self, img_info: BgImg) {

@@ -216,6 +216,17 @@ impl BumpPool {
         }
     }
 
+    /// the pixels of the last buffer we've drawn to. The shared memory is unmapped whenever all
+    /// buffers are released, but the file behind it still holds the pixels, so remap to read
+    pub fn last_drawn(&mut self, pixel_format: PixelFormat) -> Option<&[u8]> {
+        if self.buffers.is_empty() {
+            self.mmap.ensure_mapped();
+        }
+        let len = self.buffer_len(pixel_format);
+        let offset = self.buffer_offset(self.last_used_buffer as usize, pixel_format);
+        self.mmap.slice().get(offset..offset + len)
+    }
+
     /// gets the last buffer we've drawn to
     pub fn get_committable_buffer(&mut self) -> ObjectId {
         let buf = &mut self.buffers[self.last_used_buffer as usize];

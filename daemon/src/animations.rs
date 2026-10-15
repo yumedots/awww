@@ -38,7 +38,7 @@ impl Animator {
             img,
             path,
             dim,
-            ink,
+            band,
             ..
         } = img_req;
         if wallpapers.is_empty() {
@@ -47,7 +47,7 @@ impl Animator {
         for w in &mut wallpapers {
             let mut w = w.borrow_mut();
             w.set_img_info(BgImg::Img(path.str().into()));
-            w.set_ink(ink);
+            w.set_band(band);
         }
 
         let expect = wallpapers[0].borrow().get_dimensions();
