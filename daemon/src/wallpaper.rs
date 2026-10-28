@@ -77,6 +77,9 @@ pub struct Wallpaper {
     ink: u8,
     color: [u8; 4],
     last_mean: Option<[u8; 3]>,
+    /// a transition draws blends of the old and the new wallpaper, so the verdict it reaches
+    /// on the way is not the one to publish; only the frame the transition ends on is
+    ink_held: bool,
     pool: BumpPool,
 }
 
@@ -189,6 +192,7 @@ impl Wallpaper {
             ink: 0,
             color: [0, 0, 0, 0],
             last_mean: None,
+            ink_held: false,
             pool,
         }
     }
@@ -500,7 +504,22 @@ impl Wallpaper {
         self.last_mean = Some(mean);
         self.ink = crate::ink::ink_code(y);
         self.color = crate::ink::tint(mean, y);
+        if self.ink_held {
+            return;
+        }
         self.publish_ink();
+    }
+
+    pub fn hold_ink(&mut self) {
+        self.ink_held = true;
+    }
+
+    /// publishes the frame the transition landed on, measured fresh because the settle
+    /// debounce may have skipped it
+    pub fn flush_ink(&mut self, pixel_format: PixelFormat) {
+        self.ink_held = false;
+        self.last_mean = None;
+        self.sample_ink(pixel_format);
     }
 
     /// writes the ink of the frame on screen to $XDG_RUNTIME_DIR/awww-ink-<output>, so a bar can

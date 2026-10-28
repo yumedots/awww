@@ -59,6 +59,9 @@ impl Animator {
             return None;
         }
         let effect = Some(Box::new(Effect::new(transition, dim)));
+        for w in &mut wallpapers {
+            w.borrow_mut().hold_ink();
+        }
         Some(Self {
             wallpapers,
             now: crate::clock::get(),
@@ -97,6 +100,9 @@ impl Animator {
             AnimatorKind::Transition(transition) => {
                 if !transition.frame(backend, objman, wallpapers.as_mut_slice(), pixel_format) {
                     return false;
+                }
+                for w in wallpapers.iter() {
+                    w.borrow_mut().flush_ink(pixel_format);
                 }
                 // Note: it needs to have more than a single frame, otherwise there is no point in
                 // animating it
