@@ -19,6 +19,9 @@ use transitions::Effect;
 pub struct Animator {
     pub wallpapers: SmallVec<[WallpaperCell; 2]>,
     now: Timespec,
+    start: Timespec,
+    half: Timespec,
+    released: bool,
     animator: AnimatorKind,
 }
 
@@ -33,6 +36,7 @@ impl Animator {
         transition: &ipc::Transition,
         img_req: ImgReq,
         animation: Option<ipc::Animation>,
+        pixel_format: PixelFormat,
     ) -> Option<Self> {
         let ImgReq {
             img,
@@ -60,11 +64,15 @@ impl Animator {
         }
         let effect = Some(Box::new(Effect::new(transition, dim)));
         for w in &mut wallpapers {
-            w.borrow_mut().hold_ink();
+            w.borrow_mut().prepare_ink(img.bytes(), pixel_format);
         }
+        let start = crate::clock::get();
         Some(Self {
             wallpapers,
-            now: crate::clock::get(),
+            now: start,
+            start,
+            half: half_of(transition.duration),
+            released: false,
             animator: AnimatorKind::Transition(Transition {
                 effect,
                 fps_nanos: Nanos::from_nanos(1_000_000_000 / transition.fps as u64),
@@ -85,12 +93,39 @@ impl Animator {
         self.now = crate::clock::get();
     }
 
+    /// true once the wall is half switched, which is the frame a bar should take the new ink.
+    /// An effect that knows how far it has drawn says so by content, because the compositor can
+    /// hold the first frames back and the wall clock would then run ahead of the picture. An
+    /// effect with no blend of its own falls back to half of its duration.
+    fn past_midpoint(&self, transition: &Transition) -> bool {
+        if let Some(progress) = transition.effect.as_ref().and_then(|effect| effect.progress()) {
+            return progress >= 0.5;
+        }
+
+        let elapsed = crate::clock::get() - self.start;
+        nanos(elapsed) >= nanos(self.half)
+    }
+
     pub fn frame(
         &mut self,
         backend: &mut Waybackend,
         objman: &mut ObjectManager<WaylandObject>,
         pixel_format: PixelFormat,
     ) -> bool {
+        if !self.released {
+            let past = match &self.animator {
+                AnimatorKind::Transition(transition) => self.past_midpoint(transition),
+                AnimatorKind::Animation(_) => false,
+            };
+
+            if past {
+                self.released = true;
+                for w in self.wallpapers.iter() {
+                    w.borrow_mut().release_ink();
+                }
+            }
+        }
+
         let Self {
             wallpapers,
             animator,
@@ -102,7 +137,7 @@ impl Animator {
                     return false;
                 }
                 for w in wallpapers.iter() {
-                    w.borrow_mut().flush_ink(pixel_format);
+                    w.borrow_mut().end_ink(pixel_format);
                 }
                 // Note: it needs to have more than a single frame, otherwise there is no point in
                 // animating it
@@ -224,6 +259,19 @@ impl Animation {
         }
 
         *i += 1;
+    }
+}
+
+fn nanos(t: Timespec) -> i128 {
+    t.tv_sec as i128 * 1_000_000_000 + t.tv_nsec as i128
+}
+
+/// `duration` is in seconds, and the wallpaper is half switched halfway through it
+fn half_of(duration: f32) -> Timespec {
+    let half = (duration as f64 / 2.0 * 1_000_000_000.0) as i64;
+    Timespec {
+        tv_sec: half / 1_000_000_000,
+        tv_nsec: half % 1_000_000_000,
     }
 }
 

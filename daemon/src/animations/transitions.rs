@@ -95,6 +95,18 @@ impl Effect {
         }
     }
 
+    /// how far the effect has run, 0..1, when it has a blend
+    pub fn progress(&self) -> Option<f32> {
+        match self {
+            Effect::None(_) => Some(1.0),
+            Effect::Simple(_) => Option::None,
+            Effect::Fade(e) => Some(e.seq.now()),
+            Effect::Wave(e) => Some(e.seq.now()),
+            Effect::Grow(e) => Some(e.seq.now()),
+            Effect::Outer(e) => Some(e.seq.now()),
+        }
+    }
+
     pub fn execute(
         &mut self,
         backend: &mut Waybackend,
