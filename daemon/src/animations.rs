@@ -93,17 +93,17 @@ impl Animator {
         self.now = crate::clock::get();
     }
 
-    /// true once the wall has drawn its first blended frame, which is the frame a bar should
-    /// take the new ink. An effect that knows how far it has drawn says so by content, because
-    /// the compositor can hold the first frames back and the wall clock would then run ahead of
-    /// the picture. An effect with no blend of its own falls back to one frame of its duration.
+    /// true once the wall is half switched, which is the frame a bar should take the new ink.
+    /// An effect that knows how far it has drawn says so by content, because the compositor can
+    /// hold the first frames back and the wall clock would then run ahead of the picture. An
+    /// effect with no blend of its own falls back to half of its duration.
     fn past_midpoint(&self, transition: &Transition) -> bool {
         if let Some(progress) = transition.effect.as_ref().and_then(|effect| effect.progress()) {
-            return progress > 0.0;
+            return progress >= 0.5;
         }
 
         let elapsed = crate::clock::get() - self.start;
-        nanos(elapsed) >= nanos(self.half) / 2
+        nanos(elapsed) >= nanos(self.half)
     }
 
     pub fn frame(
