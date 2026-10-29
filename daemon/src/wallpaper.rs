@@ -23,6 +23,12 @@ use crate::{
 };
 use bump_pool::BumpPool;
 
+struct Ink {
+    code: u8,
+    color: [u8; 4],
+    mean: [u8; 3],
+}
+
 struct FrameCallbackHandler {
     callback: Option<ObjectId>,
 }
@@ -77,6 +83,11 @@ pub struct Wallpaper {
     ink: u8,
     color: [u8; 4],
     last_mean: Option<[u8; 3]>,
+    /// a transition draws blends of the old and the new wallpaper, so the verdict it reaches
+    /// on the way is not the one to publish; the incoming image's verdict is held until the
+    /// wallpaper is half switched, which is when the bar can show it
+    ink_held: bool,
+    ink_pending: Option<Ink>,
     pool: BumpPool,
 }
 
@@ -189,6 +200,8 @@ impl Wallpaper {
             ink: 0,
             color: [0, 0, 0, 0],
             last_mean: None,
+            ink_held: false,
+            ink_pending: None,
             pool,
         }
     }
@@ -196,7 +209,7 @@ impl Wallpaper {
     /// info for `query`, with a fresh sample of whatever is on screen right now. The sample is
     /// not published: the runtime file is about wallpaper changes, and a query is not one
     pub fn info(&mut self, pixel_format: PixelFormat) -> BgInfo {
-        self.sample_ink(pixel_format);
+        self.sample_ink(pixel_format, false);
         self.get_bg_info(pixel_format)
     }
 
@@ -440,7 +453,9 @@ impl Wallpaper {
     where
         F: FnOnce(&mut [u8]) -> T,
     {
-        f(self.pool.get_drawable(backend, objman, pixel_format))
+        let t = f(self.pool.get_drawable(backend, objman, pixel_format));
+        self.sample_ink(pixel_format, true);
+        t
     }
 
     pub fn frame_callback_completed(&mut self) {
@@ -460,8 +475,6 @@ impl Wallpaper {
                 pixel[0..channels].copy_from_slice(&color[0..channels]);
             }
         });
-        self.sample_ink(pixel_format);
-        self.publish_ink();
     }
 
     pub fn set_band(&mut self, band: u8) {
@@ -473,7 +486,9 @@ impl Wallpaper {
         self.last_mean = None;
     }
 
-    fn sample_ink(&mut self, pixel_format: PixelFormat) {
+    /// re-measures the top band of the frame that was just drawn, so the reported bar color
+    /// always follows what is actually on screen (transitions, animation frames, solid colors)
+    fn sample_ink(&mut self, pixel_format: PixelFormat, publish: bool) {
         let rows = match &self.img {
             // a solid color fills the whole canvas, one row already tells the whole story
             BgImg::Color(_) => self.band.max(1),
@@ -499,9 +514,19 @@ impl Wallpaper {
         self.last_mean = Some(mean);
         self.ink = crate::ink::ink_code(y);
         self.color = crate::ink::tint(mean, y);
+        if self.ink_held || !publish {
+            return;
+        }
+        self.publish_ink();
     }
 
-    pub fn apply_ink(&mut self, img: &[u8], pixel_format: PixelFormat) {
+    /// measures the band of the image the transition is about to draw, at full strength, and
+    /// holds the verdict instead of publishing it: the frame drawn halfway through the fade is
+    /// a blend, its band colour is not the one the bar will read against once the fade is over
+    pub fn prepare_ink(&mut self, img: &[u8], pixel_format: PixelFormat) {
+        self.ink_held = true;
+        self.ink_pending = None;
+
         let rows = self.band as usize;
         if rows == 0 {
             return;
@@ -512,10 +537,33 @@ impl Wallpaper {
             return;
         };
 
-        self.last_mean = Some(mean);
-        self.ink = crate::ink::ink_code(y);
-        self.color = crate::ink::tint(mean, y);
+        self.ink_pending = Some(Ink {
+            code: crate::ink::ink_code(y),
+            color: crate::ink::tint(mean, y),
+            mean,
+        });
+    }
+
+    /// publishes the held verdict, once
+    pub fn release_ink(&mut self) {
+        let Some(ink) = self.ink_pending.take() else {
+            return;
+        };
+        self.ink = ink.code;
+        self.color = ink.color;
+        self.last_mean = Some(ink.mean);
         self.publish_ink();
+    }
+
+    /// the transition is over: stop holding, and publish once if it never reached its
+    /// midpoint (a transition with no fade draws the new image on its first frame)
+    pub fn end_ink(&mut self, pixel_format: PixelFormat) {
+        self.ink_held = false;
+
+        if self.ink_pending.take().is_some() {
+            self.last_mean = None;
+            self.sample_ink(pixel_format, true);
+        }
     }
 
     /// writes the ink of the frame on screen to $XDG_RUNTIME_DIR/awww-ink-<output>, so a bar can
